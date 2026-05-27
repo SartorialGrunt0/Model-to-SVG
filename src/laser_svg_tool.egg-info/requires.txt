@@ -1,0 +1,9 @@
+fastapi>=0.116
+PySide6>=6.11
+gmsh>=4.15
+numpy>=2.4
+python-multipart>=0.0.20
+shapely>=2.1
+svgwrite>=1.4
+trimesh>=4.12
+uvicorn>=0.35

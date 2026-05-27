@@ -1,0 +1,60 @@
+:root {
+  --canvas: #f2ede2;
+  --panel-bg: rgba(255, 250, 244, 0.84);
+  --panel-border: rgba(16, 58, 69, 0.14);
+  --ink: #0e2730;
+  --ink-soft: #45616c;
+  --muted: #5c6b70;
+  --accent: #df603e;
+  --accent-deep: #a63d22;
+  --sans: 'Aptos', 'Segoe UI Variable Display', 'Trebuchet MS', sans-serif;
+  --heading: 'Georgia', 'Iowan Old Style', serif;
+  font: 16px/1.45 var(--sans);
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(223, 96, 62, 0.16), transparent 24%),
+    radial-gradient(circle at top right, rgba(16, 58, 69, 0.16), transparent 28%),
+    linear-gradient(180deg, #f5efe5 0%, #ece3d3 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-family: var(--heading);
+  font-weight: 700;
+  line-height: 1.05;
+  color: var(--ink);
+}
+
+h1 {
+  font-size: clamp(2.4rem, 2vw + 1.8rem, 3.7rem);
+}
+
+h2 {
+  font-size: clamp(1.15rem, 1vw + 0.9rem, 1.7rem);
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+}

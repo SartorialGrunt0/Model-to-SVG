@@ -1,0 +1,31 @@
+[project]
+name = "laser-svg-tool"
+version = "0.1.0"
+description = "Desktop STL/STEP to SVG trace tool for laser engraving alignment"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.116",
+    "PySide6>=6.11",
+    "gmsh>=4.15",
+    "numpy>=2.4",
+    "python-multipart>=0.0.20",
+    "shapely>=2.1",
+    "svgwrite>=1.4",
+    "trimesh>=4.12",
+    "uvicorn>=0.35",
+]
+
+[project.scripts]
+laser-svg-tool = "laser_svg_tool.main:main"
+laser-svg-web = "laser_svg_tool.web_api:run"
+
+[build-system]
+requires = ["setuptools>=80", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

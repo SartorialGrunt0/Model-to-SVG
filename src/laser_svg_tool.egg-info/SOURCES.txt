@@ -1,0 +1,17 @@
+README.md
+pyproject.toml
+src/laser_svg_tool/__init__.py
+src/laser_svg_tool/__main__.py
+src/laser_svg_tool/canvas.py
+src/laser_svg_tool/document.py
+src/laser_svg_tool/geometry.py
+src/laser_svg_tool/main.py
+src/laser_svg_tool/svg_export.py
+src/laser_svg_tool/text_geometry.py
+src/laser_svg_tool/web_api.py
+src/laser_svg_tool.egg-info/PKG-INFO
+src/laser_svg_tool.egg-info/SOURCES.txt
+src/laser_svg_tool.egg-info/dependency_links.txt
+src/laser_svg_tool.egg-info/entry_points.txt
+src/laser_svg_tool.egg-info/requires.txt
+src/laser_svg_tool.egg-info/top_level.txt

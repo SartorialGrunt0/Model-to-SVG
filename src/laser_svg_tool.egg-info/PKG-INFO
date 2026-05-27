@@ -1,3 +1,19 @@
+Metadata-Version: 2.4
+Name: laser-svg-tool
+Version: 0.1.0
+Summary: Desktop STL/STEP to SVG trace tool for laser engraving alignment
+Requires-Python: >=3.14
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.116
+Requires-Dist: PySide6>=6.11
+Requires-Dist: gmsh>=4.15
+Requires-Dist: numpy>=2.4
+Requires-Dist: python-multipart>=0.0.20
+Requires-Dist: shapely>=2.1
+Requires-Dist: svgwrite>=1.4
+Requires-Dist: trimesh>=4.12
+Requires-Dist: uvicorn>=0.35
+
 # Laser SVG Tool
 
 Local web app for converting STL and STEP models into 1:1 SVG trace outlines for laser-engraving alignment.

@@ -1,0 +1,3 @@
+[console_scripts]
+laser-svg-tool = laser_svg_tool.main:main
+laser-svg-web = laser_svg_tool.web_api:run
