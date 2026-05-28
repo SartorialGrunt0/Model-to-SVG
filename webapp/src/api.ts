@@ -48,11 +48,13 @@ export async function fetchProjection(
   file: File,
   orientation: Orientation,
   pageRotation: number,
+  perspectiveDistance: number = 0,
 ): Promise<ProjectionData> {
   const formData = new FormData()
   formData.append('model_file', file)
   formData.append('orientation', orientation)
   formData.append('page_rotation', String(pageRotation))
+  formData.append('perspective_distance', String(perspectiveDistance))
 
   return requestJson<ProjectionData>('/api/project', {
     method: 'POST',

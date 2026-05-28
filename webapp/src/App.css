@@ -378,7 +378,7 @@ button.danger:hover:not(:disabled) {
   width: 100%;
   height: min(78vh, 980px);
   display: block;
-  background: #0d0d10;
+  background: #ffffff;
   border-radius: var(--radius);
   border: 1px solid var(--border);
 }
@@ -387,19 +387,19 @@ button.danger:hover:not(:disabled) {
   cursor: crosshair;
 }
 
-/* Grid & SVG elements — staying dark */
+/* Grid & SVG elements — light background */
 .grid-minor {
-  stroke: rgba(255, 255, 255, 0.04);
+  stroke: rgba(0, 0, 0, 0.06);
   stroke-width: 0.05;
 }
 
 .grid-major {
-  stroke: rgba(255, 255, 255, 0.08);
+  stroke: rgba(0, 0, 0, 0.12);
   stroke-width: 0.08;
 }
 
 .segment-line {
-  stroke: #e4e4e7;
+  stroke: #18181b;
   stroke-width: 0.24;
   vector-effect: non-scaling-stroke;
   stroke-linecap: round;
@@ -420,9 +420,38 @@ button.danger:hover:not(:disabled) {
   stroke-dasharray: 0.8 0.6;
 }
 
+.filled-polygon {
+  fill: black;
+  stroke: none;
+}
+
+.model-group {
+  cursor: grab;
+}
+
+.model-group.selected > .model-selection-box {
+  stroke: var(--accent);
+}
+
+.model-selection-box {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 0.2;
+  stroke-dasharray: 1.2 0.8;
+  vector-effect: non-scaling-stroke;
+}
+
+.resize-handle {
+  fill: var(--accent);
+  stroke: white;
+  stroke-width: 0.15;
+  cursor: nwse-resize;
+  vector-effect: non-scaling-stroke;
+}
+
 .annotation-box {
   fill: transparent;
-  stroke: rgba(255, 255, 255, 0.08);
+  stroke: rgba(0, 0, 0, 0.12);
   stroke-width: 0.14;
   stroke-dasharray: 0.8 0.6;
   vector-effect: non-scaling-stroke;
@@ -435,7 +464,7 @@ button.danger:hover:not(:disabled) {
 
 .text-outline {
   fill: none;
-  stroke: #f4f4f6;
+  stroke: #18181b;
   stroke-width: 0.18;
   vector-effect: non-scaling-stroke;
 }
@@ -452,12 +481,28 @@ button.danger:hover:not(:disabled) {
   font-size: 1.1px;
   font-weight: 600;
   paint-order: stroke;
-  stroke: rgba(9, 9, 11, 0.92);
+  stroke: rgba(255, 255, 255, 0.92);
   stroke-width: 0.2;
 }
 
 .measure-point {
   fill: var(--accent);
+}
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.slider-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.slider-row .slider-number {
+  width: 70px;
+  flex-shrink: 0;
 }
 
 /* Status */
