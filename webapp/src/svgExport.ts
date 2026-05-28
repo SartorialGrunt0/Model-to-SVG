@@ -1,4 +1,4 @@
-import type { ImageAnnotation, ProjectionData, TextAnnotation } from './types'
+import type { ImageAnnotation, ModelEntry, TextAnnotation } from './types'
 
 function escapeXml(value: string): string {
   return value
@@ -16,20 +16,54 @@ function buildTransform(x: number, y: number, rotation: number): string {
   return `translate(${formatNumber(x)} ${formatNumber(y)}) rotate(${formatNumber(rotation)})`
 }
 
+function polygonToPathData(points: [number, number][]): string {
+  if (points.length < 3) return ''
+  const parts = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(6)} ${p[1].toFixed(6)}`)
+  return parts.join(' ') + ' Z'
+}
+
 export function buildExportSvg(
-  projection: ProjectionData,
-  hiddenLineIds: string[],
+  models: ModelEntry[],
   textAnnotations: TextAnnotation[],
   imageAnnotations: ImageAnnotation[],
 ): string {
-  const hidden = new Set(hiddenLineIds)
+  let maxX = 0
+  let maxY = 0
+  for (const model of models) {
+    if (!model.projection) continue
+    const right = model.x + model.projection.width * model.scale
+    const bottom = model.y + model.projection.height * model.scale
+    if (right > maxX) maxX = right
+    if (bottom > maxY) maxY = bottom
+  }
+  const canvasWidth = maxX || 100
+  const canvasHeight = maxY || 100
 
-  const lineMarkup = projection.segments
-    .filter((segment) => !hidden.has(segment.id))
-    .map(
-      (segment) =>
-        `<line x1="${formatNumber(segment.start[0])}" y1="${formatNumber(segment.start[1])}" x2="${formatNumber(segment.end[0])}" y2="${formatNumber(segment.end[1])}" />`,
-    )
+  const modelMarkup = models
+    .filter((model) => model.projection)
+    .map((model) => {
+      const hidden = new Set(model.hiddenLineIds)
+      const proj = model.projection!
+
+      const fillMarkup = model.fillEnabled
+        ? proj.closed_polygons
+            .map(
+              (polygon) =>
+                `<path d="${polygonToPathData(polygon.points)}" fill="black" stroke="none" />`,
+            )
+            .join('')
+        : ''
+
+      const lineMarkup = proj.segments
+        .filter((segment) => !hidden.has(segment.id))
+        .map(
+          (segment) =>
+            `<line x1="${formatNumber(segment.start[0])}" y1="${formatNumber(segment.start[1])}" x2="${formatNumber(segment.end[0])}" y2="${formatNumber(segment.end[1])}" />`,
+        )
+        .join('')
+
+      return `<g transform="translate(${formatNumber(model.x)} ${formatNumber(model.y)}) scale(${formatNumber(model.scale)})">${fillMarkup}${lineMarkup}</g>`
+    })
     .join('')
 
   const textMarkup = textAnnotations
@@ -49,9 +83,10 @@ export function buildExportSvg(
     .join('')
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${projection.width.toFixed(4)}mm" height="${projection.height.toFixed(4)}mm" viewBox="0 0 ${formatNumber(projection.width)} ${formatNumber(projection.height)}">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${canvasWidth.toFixed(4)}mm" height="${canvasHeight.toFixed(4)}mm" viewBox="0 0 ${formatNumber(canvasWidth)} ${formatNumber(canvasHeight)}">
+  <rect width="${formatNumber(canvasWidth)}" height="${formatNumber(canvasHeight)}" fill="white" />
   <g fill="none" stroke="black" stroke-width="0.2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke">
-    ${lineMarkup}
+    ${modelMarkup}
     ${textMarkup}
   </g>
   ${imageMarkup}

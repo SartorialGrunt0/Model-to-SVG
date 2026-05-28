@@ -46,11 +46,12 @@ def project_model_outline(
     orientation: str = "top",
     page_rotation: int = 0,
     units: str = "mm",
+    perspective_distance: float = 0.0,
 ) -> ProjectionResult:
     path = Path(source_path)
     triangles = _load_surface_triangles(path)
     rotated = _rotate_triangles(triangles, orientation)
-    segments = _extract_visible_segments(rotated)
+    segments = _extract_visible_segments(rotated, perspective_distance)
     segments = _rotate_segments_2d(segments, page_rotation)
     bounds = _compute_bounds(segments)
     return ProjectionResult(
@@ -186,7 +187,14 @@ def _rotation_matrix_y(angle_radians: float) -> np.ndarray:
     )
 
 
-def _extract_visible_segments(triangles: np.ndarray) -> list[Segment2D]:
+def _apply_perspective(x: float, y: float, z: float, distance: float) -> tuple[float, float]:
+    if distance <= 0.0:
+        return (x, y)
+    scale = distance / (distance + z)
+    return (x * scale, y * scale)
+
+
+def _extract_visible_segments(triangles: np.ndarray, perspective_distance: float = 0.0) -> list[Segment2D]:
     normals = _face_normals(triangles)
     vertex_ids = _index_vertices(triangles)
     edge_faces: dict[tuple[int, int], list[int]] = {}
@@ -209,10 +217,15 @@ def _extract_visible_segments(triangles: np.ndarray) -> list[Segment2D]:
         if not _edge_is_visible(faces, normals):
             continue
         start_point, end_point = edge_points[edge_key]
-        projected = Segment2D(
-            start=(float(start_point[0]), float(start_point[1])),
-            end=(float(end_point[0]), float(end_point[1])),
+        start_2d = _apply_perspective(
+            float(start_point[0]), float(start_point[1]), float(start_point[2]),
+            perspective_distance,
         )
+        end_2d = _apply_perspective(
+            float(end_point[0]), float(end_point[1]), float(end_point[2]),
+            perspective_distance,
+        )
+        projected = Segment2D(start=start_2d, end=end_2d)
         if projected.length > EPSILON:
             segments.append(projected)
     return _deduplicate_segments(segments)
@@ -313,3 +326,58 @@ def _deduplicate_segments(segments: list[Segment2D]) -> list[Segment2D]:
         )
         deduplicated[key] = segment
     return list(deduplicated.values())
+
+
+def _round_point(point: tuple[float, float], precision: int = 4) -> tuple[float, float]:
+    return (round(point[0], precision), round(point[1], precision))
+
+
+def find_closed_polygons(segments: list[Segment2D]) -> list[list[tuple[float, float]]]:
+    """Find closed polygons from a list of 2D segments using edge-following."""
+    adjacency: dict[tuple[float, float], list[tuple[float, float]]] = {}
+    for segment in segments:
+        start = _round_point(segment.start)
+        end = _round_point(segment.end)
+        adjacency.setdefault(start, []).append(end)
+        adjacency.setdefault(end, []).append(start)
+
+    used_edges: set[tuple[tuple[float, float], tuple[float, float]]] = set()
+    polygons: list[list[tuple[float, float]]] = []
+
+    for segment in segments:
+        start = _round_point(segment.start)
+        end = _round_point(segment.end)
+
+        for direction_start, direction_end in [(start, end), (end, start)]:
+            edge_key = (direction_start, direction_end)
+            if edge_key in used_edges:
+                continue
+
+            path = [direction_start, direction_end]
+            used_edges.add(edge_key)
+            current = direction_end
+
+            max_steps = len(segments) + 1
+            for _ in range(max_steps):
+                neighbors = adjacency.get(current, [])
+                previous = path[-2]
+
+                next_point = None
+                for neighbor in neighbors:
+                    candidate_edge = (current, neighbor)
+                    if candidate_edge not in used_edges and neighbor != previous:
+                        next_point = neighbor
+                        break
+
+                if next_point is None:
+                    break
+
+                used_edges.add((current, next_point))
+                if next_point == path[0]:
+                    polygons.append(path)
+                    break
+
+                path.append(next_point)
+                current = next_point
+
+    return polygons

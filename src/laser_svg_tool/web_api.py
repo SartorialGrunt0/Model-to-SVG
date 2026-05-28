@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .document import normalize_projection
-from .geometry import Segment2D, project_model_outline
+from .geometry import Segment2D, find_closed_polygons, project_model_outline
 from .text_geometry import build_text_outline, list_font_families
 
 
@@ -21,6 +21,11 @@ class SegmentResponse(BaseModel):
     length: float
 
 
+class PolygonResponse(BaseModel):
+    id: str
+    points: list[tuple[float, float]]
+
+
 class ProjectionResponse(BaseModel):
     file_name: str
     orientation: str
@@ -29,6 +34,7 @@ class ProjectionResponse(BaseModel):
     width: float
     height: float
     segments: list[SegmentResponse]
+    closed_polygons: list[PolygonResponse]
 
 
 class FontListResponse(BaseModel):
@@ -75,6 +81,7 @@ async def project_uploaded_model(
     model_file: UploadFile = File(...),
     orientation: str = Form("top"),
     page_rotation: int = Form(0),
+    perspective_distance: float = Form(0.0),
 ) -> ProjectionResponse:
     suffix = Path(model_file.filename or "uploaded-model").suffix.lower()
     if suffix not in {".stl", ".step", ".stp"}:
@@ -91,12 +98,19 @@ async def project_uploaded_model(
             orientation=orientation,
             page_rotation=page_rotation,
             units="mm",
+            perspective_distance=perspective_distance,
         )
         normalized = normalize_projection(projection)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
         temp_path.unlink(missing_ok=True)
+
+    polygons = find_closed_polygons(list(normalized.segments))
+    polygon_responses = [
+        PolygonResponse(id=f"poly-{index}", points=list(polygon))
+        for index, polygon in enumerate(polygons)
+    ]
 
     return ProjectionResponse(
         file_name=model_file.filename or temp_path.name,
@@ -106,6 +120,7 @@ async def project_uploaded_model(
         width=normalized.width,
         height=normalized.height,
         segments=[_segment_response(index, segment) for index, segment in enumerate(normalized.segments)],
+        closed_polygons=polygon_responses,
     )
 
 

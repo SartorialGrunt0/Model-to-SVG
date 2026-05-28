@@ -7,6 +7,11 @@ export type Segment = {
   length: number
 }
 
+export type ClosedPolygon = {
+  id: string
+  points: [number, number][]
+}
+
 export type ProjectionData = {
   file_name: string
   orientation: Orientation
@@ -15,6 +20,23 @@ export type ProjectionData = {
   width: number
   height: number
   segments: Segment[]
+  closed_polygons: ClosedPolygon[]
+}
+
+export type ModelEntry = {
+  id: string
+  name: string
+  file: File
+  orientation: Orientation
+  pageRotation: number
+  perspectiveDistance: number
+  projection: ProjectionData | null
+  hiddenLineIds: string[]
+  selectedLineIds: string[]
+  fillEnabled: boolean
+  x: number
+  y: number
+  scale: number
 }
 
 export type TextPathResponse = {
