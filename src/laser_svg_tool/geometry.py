@@ -357,10 +357,10 @@ def find_closed_polygons(segments: list[Segment2D]) -> list[list[tuple[float, fl
             used_edges.add(edge_key)
             current = direction_end
 
-            max_steps = len(segments) + 1
+            max_steps = min(len(segments) + 1, 10000)
             for _ in range(max_steps):
                 neighbors = adjacency.get(current, [])
-                previous = path[-2]
+                previous = path[-2] if len(path) >= 2 else None
 
                 next_point = None
                 for neighbor in neighbors:

@@ -141,9 +141,13 @@ function polygonToPathData(points: [number, number][]): string {
   return parts.join(' ') + ' Z'
 }
 
+const DEFAULT_CANVAS_SIZE = 100
+const CANVAS_PADDING = 10
+const TEXT_RESIZE_SENSITIVITY = 20
+
 function computeCanvasBounds(models: ModelEntry[]): { width: number; height: number } {
-  let maxX = 100
-  let maxY = 100
+  let maxX = DEFAULT_CANVAS_SIZE
+  let maxY = DEFAULT_CANVAS_SIZE
   for (const model of models) {
     if (!model.projection) continue
     const right = model.x + model.projection.width * model.scale
@@ -151,7 +155,7 @@ function computeCanvasBounds(models: ModelEntry[]): { width: number; height: num
     if (right > maxX) maxX = right
     if (bottom > maxY) maxY = bottom
   }
-  return { width: maxX + 10, height: maxY + 10 }
+  return { width: maxX + CANVAS_PADDING, height: maxY + CANVAS_PADDING }
 }
 
 function App() {
@@ -363,7 +367,7 @@ function App() {
         const newWidth = Math.max(0.5, resizeState.originalWidth + delta)
         updateSelectedImage({ width: newWidth, height: newWidth * ratio })
       } else if (resizeState.kind === 'text') {
-        const scaleFactor = Math.max(0.1, 1 + delta / 20)
+        const scaleFactor = Math.max(0.1, 1 + delta / TEXT_RESIZE_SENSITIVITY)
         const originalAnnotation = textAnnotations.find((a) => a.id === resizeState.id)
         if (originalAnnotation) {
           const newSizeMm = Math.max(0.5, Math.min(200, originalAnnotation.sizeMm * scaleFactor))

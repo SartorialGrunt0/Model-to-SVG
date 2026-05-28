@@ -1,5 +1,7 @@
 import type { ImageAnnotation, ModelEntry, TextAnnotation } from './types'
 
+const DEFAULT_CANVAS_SIZE = 100
+
 function escapeXml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
@@ -36,8 +38,8 @@ export function buildExportSvg(
     if (right > maxX) maxX = right
     if (bottom > maxY) maxY = bottom
   }
-  const canvasWidth = maxX || 100
-  const canvasHeight = maxY || 100
+  const canvasWidth = maxX || DEFAULT_CANVAS_SIZE
+  const canvasHeight = maxY || DEFAULT_CANVAS_SIZE
 
   const modelMarkup = models
     .filter((model) => model.projection)
