@@ -1,23 +1,23 @@
 :root {
   /* Surfaces */
-  --bg: #09090b;
-  --surface: #131316;
-  --surface-raised: #1a1a1e;
-  --surface-hover: #222228;
+  --bg: #15181d;
+  --surface: #20242b;
+  --surface-raised: #2a3039;
+  --surface-hover: #353d49;
 
   /* Borders */
-  --border: #25252b;
-  --border-light: #1e1e24;
+  --border: #404856;
+  --border-light: #333945;
 
   /* Text */
-  --text: #f4f4f6;
-  --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
+  --text: #f5f7fb;
+  --text-secondary: #c4ccd8;
+  --text-muted: #97a0af;
 
   /* Accent */
-  --accent: #7c8aff;
-  --accent-hover: #9ba5ff;
-  --accent-dim: rgba(124, 138, 255, 0.12);
+  --accent: #8ea2ff;
+  --accent-hover: #b5c2ff;
+  --accent-dim: rgba(142, 162, 255, 0.18);
 
   /* Semantic */
   --danger: #ff6b6b;
@@ -51,7 +51,9 @@
 body {
   margin: 0;
   min-width: 320px;
-  background: var(--bg);
+  background:
+    radial-gradient(circle at top, rgba(91, 104, 130, 0.34), transparent 38%),
+    linear-gradient(180deg, #1a1f26 0%, var(--bg) 38%, #101318 100%);
 }
 
 #root {

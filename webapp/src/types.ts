@@ -33,7 +33,7 @@ export type ModelEntry = {
   projection: ProjectionData | null
   hiddenLineIds: string[]
   selectedLineIds: string[]
-  fillEnabled: boolean
+  filledPolygonIds: string[]
   x: number
   y: number
   scale: number

@@ -10,6 +10,14 @@ import {
 } from 'react'
 import './App.css'
 import { fetchFonts, fetchProjection, fetchTextPath } from './api'
+import {
+  buildContinuousLineGroups,
+  buildImageSnapGuides,
+  findBestSnapGuide,
+  type LineGroup,
+  type SnapGuide,
+  type SnapHit,
+} from './previewGeometry'
 import { buildExportSvg, downloadSvg } from './svgExport'
 import type {
   ImageAnnotation,
@@ -17,7 +25,6 @@ import type {
   ModelEntry,
   Orientation,
   Point,
-  Segment,
   TextAnnotation,
 } from './types'
 
@@ -58,27 +65,6 @@ function distanceBetween(start: Point, end: Point): number {
   return Math.hypot(dx, dy)
 }
 
-function nearestPointOnSegment(point: Point, segment: Segment): Point {
-  const [startX, startY] = segment.start
-  const [endX, endY] = segment.end
-  const dx = endX - startX
-  const dy = endY - startY
-  const segmentLengthSquared = dx * dx + dy * dy
-
-  if (segmentLengthSquared <= Number.EPSILON) {
-    return { x: startX, y: startY }
-  }
-
-  const projection =
-    ((point.x - startX) * dx + (point.y - startY) * dy) / segmentLengthSquared
-  const clamped = Math.max(0, Math.min(1, projection))
-
-  return {
-    x: startX + clamped * dx,
-    y: startY + clamped * dy,
-  }
-}
-
 function clientPointToSvg(
   svg: SVGSVGElement,
   clientX: number,
@@ -105,12 +91,6 @@ function getSnapToleranceMm(svg: SVGSVGElement, canvasWidth: number): number {
 
   const millimetersPerPixel = canvasWidth / bounds.width
   return Math.max(millimetersPerPixel * 12, 0.75)
-}
-
-function toggleId(currentIds: string[], id: string): string[] {
-  return currentIds.includes(id)
-    ? currentIds.filter((currentId) => currentId !== id)
-    : [...currentIds, id]
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -172,8 +152,10 @@ function App() {
   const [imageAnnotations, setImageAnnotations] = useState<ImageAnnotation[]>([])
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null)
   const [measureMode, setMeasureMode] = useState(false)
+  const [fillMode, setFillMode] = useState(false)
   const [measurementDraft, setMeasurementDraft] = useState<Point | null>(null)
   const [measurements, setMeasurements] = useState<Measurement[]>([])
+  const [hoverSnap, setHoverSnap] = useState<SnapHit | null>(null)
   const [dragState, setDragState] = useState<DragState | null>(null)
   const [resizeState, setResizeState] = useState<ResizeState | null>(null)
   const textRequestSequence = useRef(0)
@@ -188,44 +170,88 @@ function App() {
 
   const canvasBounds = computeCanvasBounds(models)
 
-  const allVisibleSegments: Array<{ segment: Segment; modelId: string }> = []
+  const lineGroupsByModel = new Map<string, LineGroup[]>()
+  const lineGroupBySegmentId = new Map<string, LineGroup>()
+  const modelSnapGuides: SnapGuide[] = []
+
   for (const model of models) {
     if (!model.projection) continue
+
+    const lineGroups = buildContinuousLineGroups(model.projection.segments)
     const hiddenSet = new Set(model.hiddenLineIds)
-    for (const segment of model.projection.segments) {
-      if (!hiddenSet.has(segment.id)) {
-        allVisibleSegments.push({
-          segment: {
-            ...segment,
-            start: [segment.start[0] * model.scale + model.x, segment.start[1] * model.scale + model.y],
-            end: [segment.end[0] * model.scale + model.x, segment.end[1] * model.scale + model.y],
-            length: segment.length * model.scale,
+    lineGroupsByModel.set(model.id, lineGroups)
+
+    for (const lineGroup of lineGroups) {
+      for (const segment of lineGroup.segments) {
+        lineGroupBySegmentId.set(segment.id, lineGroup)
+        if (hiddenSet.has(segment.id)) {
+          continue
+        }
+
+        const start = {
+          x: segment.start[0] * model.scale + model.x,
+          y: segment.start[1] * model.scale + model.y,
+        }
+        const end = {
+          x: segment.end[0] * model.scale + model.x,
+          y: segment.end[1] * model.scale + model.y,
+        }
+
+        modelSnapGuides.push(
+          {
+            id: `${model.id}-${segment.id}`,
+            kind: 'segment',
+            label: `${model.name} ${lineGroup.label}`,
+            start,
+            end,
+            source: 'model',
           },
-          modelId: model.id,
-        })
+          {
+            id: `${model.id}-${segment.id}-start`,
+            kind: 'point',
+            label: `${model.name} ${lineGroup.label} start`,
+            point: start,
+            source: 'model',
+          },
+          {
+            id: `${model.id}-${segment.id}-end`,
+            kind: 'point',
+            label: `${model.name} ${lineGroup.label} end`,
+            point: end,
+            source: 'model',
+          },
+          {
+            id: `${model.id}-${segment.id}-mid`,
+            kind: 'point',
+            label: `${model.name} ${lineGroup.label} midpoint`,
+            point: {
+              x: (start.x + end.x) / 2,
+              y: (start.y + end.y) / 2,
+            },
+            source: 'model',
+          },
+        )
       }
     }
   }
 
-  function findSnapPoint(point: Point): Point | null {
+  const measurementSnapGuides = [...modelSnapGuides, ...buildImageSnapGuides(imageAnnotations)]
+
+  function findSnapHit(point: Point, guides: SnapGuide[]): SnapHit | null {
     if (!svgRef.current) {
       return null
     }
 
     const tolerance = getSnapToleranceMm(svgRef.current, canvasBounds.width)
-    let bestPoint: Point | null = null
-    let bestDistance = tolerance
+    return findBestSnapGuide(point, guides, tolerance)
+  }
 
-    for (const { segment } of allVisibleSegments) {
-      const candidate = nearestPointOnSegment(point, segment)
-      const candidateDistance = distanceBetween(point, candidate)
-      if (candidateDistance <= bestDistance) {
-        bestDistance = candidateDistance
-        bestPoint = candidate
-      }
-    }
+  function findModelSnapPoint(point: Point): Point | null {
+    return findSnapHit(point, modelSnapGuides)?.point ?? null
+  }
 
-    return bestPoint
+  function findMeasurementSnapHit(point: Point): SnapHit | null {
+    return findSnapHit(point, measurementSnapGuides)
   }
 
   function updateModel(modelId: string, patch: Partial<ModelEntry>) {
@@ -250,7 +276,13 @@ function App() {
         setModels((current) =>
           current.map((m) =>
             m.id === model.id
-              ? { ...m, projection: nextProjection, hiddenLineIds: [], selectedLineIds: [] }
+              ? {
+                  ...m,
+                  projection: nextProjection,
+                  hiddenLineIds: [],
+                  selectedLineIds: [],
+                  filledPolygonIds: [],
+                }
               : m,
           ),
         )
@@ -341,6 +373,12 @@ function App() {
     }
   }, [selectedText?.content, selectedText?.fontFamily, selectedText?.id, selectedText?.sizeMm])
 
+  useEffect(() => {
+    if (!measureMode) {
+      setHoverSnap(null)
+    }
+  }, [measureMode])
+
   const handleDragMove = useEffectEvent((event: PointerEvent) => {
     if (!svgRef.current) {
       return
@@ -396,7 +434,7 @@ function App() {
       return
     }
 
-    const snapped = findSnapPoint(nextPoint)
+    const snapped = findModelSnapPoint(nextPoint)
     const target = snapped ?? nextPoint
 
     if (dragState.kind === 'text') {
@@ -480,7 +518,7 @@ function App() {
         projection: null,
         hiddenLineIds: [],
         selectedLineIds: [],
-        fillEnabled: false,
+        filledPolygonIds: [],
         x: 0,
         y: 0,
         scale: 1,
@@ -550,7 +588,7 @@ function App() {
       setSelectedImageId(null)
       setSelectedModelId(null)
       setStatus(
-        'Added a text annotation. Drag it in the preview or refine the coordinates in the sidebar.',
+        'Added a text annotation. Use the center drag handle in the preview or refine the coordinates in the sidebar.',
       )
     } catch (textError) {
       const message =
@@ -599,7 +637,7 @@ function App() {
       setSelectedTextId(null)
       setSelectedModelId(null)
       setStatus(
-        `Added image ${file.name}. Drag it in the preview or edit its exact position in the sidebar.`,
+        `Added image ${file.name}. Use the center drag handle in the preview or edit its exact position in the sidebar.`,
       )
     } catch (imageError) {
       const message =
@@ -626,7 +664,12 @@ function App() {
     segmentId: string,
     modelId: string,
   ) {
-    if (measureMode) {
+    if (measureMode || fillMode) {
+      return
+    }
+
+    const lineGroup = lineGroupBySegmentId.get(segmentId)
+    if (!lineGroup) {
       return
     }
 
@@ -638,10 +681,23 @@ function App() {
     setModels((current) =>
       current.map((m) => {
         if (m.id !== modelId) return m
-        const newSelected = event.shiftKey || event.metaKey || event.ctrlKey
-          ? toggleId(m.selectedLineIds, segmentId)
-          : [segmentId]
-        return { ...m, selectedLineIds: newSelected }
+
+        const selectedIds = new Set(m.selectedLineIds)
+        const groupAlreadySelected = lineGroup.segmentIds.every((id) => selectedIds.has(id))
+
+        if (event.shiftKey || event.metaKey || event.ctrlKey) {
+          for (const id of lineGroup.segmentIds) {
+            if (groupAlreadySelected) {
+              selectedIds.delete(id)
+            } else {
+              selectedIds.add(id)
+            }
+          }
+
+          return { ...m, selectedLineIds: Array.from(selectedIds) }
+        }
+
+        return { ...m, selectedLineIds: [...lineGroup.segmentIds] }
       }),
     )
   }
@@ -657,16 +713,16 @@ function App() {
     }
 
     if (measureMode) {
-      const snapped = findSnapPoint(pointer)
-      if (!snapped) {
-        setStatus('Move closer to the model linework to place a measurement point.')
+      const snapHit = findMeasurementSnapHit(pointer)
+      if (!snapHit) {
+        setStatus('Move closer to model linework, an image edge, or an image center guide to place a measurement point.')
         return
       }
 
       if (!measurementDraft) {
-        setMeasurementDraft(snapped)
+        setMeasurementDraft(snapHit.point)
         setStatus(
-          `Measurement start set at ${formatMillimeters(snapped.x)}, ${formatMillimeters(snapped.y)}.`,
+          `Measurement start set on ${snapHit.guide.label} at ${formatMillimeters(snapHit.point.x)}, ${formatMillimeters(snapHit.point.y)}.`,
         )
         return
       }
@@ -674,13 +730,18 @@ function App() {
       const measurement: Measurement = {
         id: crypto.randomUUID(),
         start: measurementDraft,
-        end: snapped,
-        length: distanceBetween(measurementDraft, snapped),
+        end: snapHit.point,
+        length: distanceBetween(measurementDraft, snapHit.point),
       }
 
       setMeasurements((currentMeasurements) => [...currentMeasurements, measurement])
       setMeasurementDraft(null)
       setStatus(`Measured ${formatMillimeters(measurement.length)}.`)
+      return
+    }
+
+    if (fillMode) {
+      setStatus('Fill tool is active. Click inside a closed area to toggle fill.')
       return
     }
 
@@ -690,14 +751,28 @@ function App() {
     setSelectedModelId(null)
   }
 
+  function handleCanvasPointerMove(event: ReactPointerEvent<SVGSVGElement>) {
+    if (!measureMode || !svgRef.current || dragState || resizeState) {
+      return
+    }
+
+    const pointer = clientPointToSvg(svgRef.current, event.clientX, event.clientY)
+    if (!pointer) {
+      setHoverSnap(null)
+      return
+    }
+
+    setHoverSnap(findMeasurementSnapHit(pointer))
+  }
+
   function beginDrag(
     kind: 'text' | 'image' | 'model',
     id: string,
     x: number,
     y: number,
-    event: ReactPointerEvent<SVGGElement>,
+    event: ReactPointerEvent<SVGElement>,
   ) {
-    if (measureMode || !svgRef.current) {
+    if (measureMode || fillMode || !svgRef.current) {
       return
     }
 
@@ -738,7 +813,7 @@ function App() {
     id: string,
     event: ReactPointerEvent<SVGRectElement>,
   ) {
-    if (measureMode || !svgRef.current) return
+    if (measureMode || fillMode || !svgRef.current) return
 
     const pointer = clientPointToSvg(svgRef.current, event.clientX, event.clientY)
     if (!pointer) return
@@ -794,13 +869,50 @@ function App() {
     )
   }
 
-  function handleUnhideLine(modelId: string, lineId: string) {
+  function handleUnhideLine(modelId: string, lineIds: string[]) {
     setModels((current) =>
       current.map((m) => {
         if (m.id !== modelId) return m
-        return { ...m, hiddenLineIds: m.hiddenLineIds.filter((id) => id !== lineId) }
+        return {
+          ...m,
+          hiddenLineIds: m.hiddenLineIds.filter((id) => !lineIds.includes(id)),
+        }
       }),
     )
+  }
+
+  function handlePolygonPointerDown(
+    event: ReactPointerEvent<SVGPathElement>,
+    modelId: string,
+    polygonId: string,
+  ) {
+    if (!fillMode) {
+      return
+    }
+
+    event.stopPropagation()
+
+    const wasFilled =
+      models.find((model) => model.id === modelId)?.filledPolygonIds.includes(polygonId) ?? false
+
+    setSelectedModelId(modelId)
+    setSelectedTextId(null)
+    setSelectedImageId(null)
+    setModels((current) =>
+      current.map((model) => {
+        if (model.id !== modelId) {
+          return model
+        }
+
+        return {
+          ...model,
+          filledPolygonIds: wasFilled
+            ? model.filledPolygonIds.filter((id) => id !== polygonId)
+            : [...model.filledPolygonIds, polygonId],
+        }
+      }),
+    )
+    setStatus(wasFilled ? 'Removed fill from the selected closed area.' : 'Filled the selected closed area.')
   }
 
   function handleExport() {
@@ -816,18 +928,30 @@ function App() {
     setStatus('SVG exported.')
   }
 
-  const totalVisibleLines = models.reduce((sum, m) => {
-    if (!m.projection) return sum
-    return sum + m.projection.segments.length - m.hiddenLineIds.length
+  const totalVisibleLines = models.reduce((sum, model) => {
+    const lineGroups = lineGroupsByModel.get(model.id) ?? []
+    const hiddenSet = new Set(model.hiddenLineIds)
+    return sum + lineGroups.filter((lineGroup) => !lineGroup.segmentIds.every((id) => hiddenSet.has(id))).length
   }, 0)
-  const totalHiddenLines = models.reduce((sum, m) => sum + m.hiddenLineIds.length, 0)
+  const totalHiddenLines = models.reduce((sum, model) => {
+    const lineGroups = lineGroupsByModel.get(model.id) ?? []
+    const hiddenSet = new Set(model.hiddenLineIds)
+    return sum + lineGroups.filter((lineGroup) => lineGroup.segmentIds.every((id) => hiddenSet.has(id))).length
+  }, 0)
 
-  const selectedModelSelectedSegments = selectedModel?.projection?.segments.filter(
-    (s) => selectedModel.selectedLineIds.includes(s.id),
-  ) ?? []
-  const selectedModelHiddenSegments = selectedModel?.projection?.segments.filter(
-    (s) => selectedModel.hiddenLineIds.includes(s.id),
-  ) ?? []
+  const selectedModelLineGroups = selectedModel
+    ? lineGroupsByModel.get(selectedModel.id) ?? []
+    : []
+  const selectedModelSelectedGroups = selectedModel
+    ? selectedModelLineGroups.filter((lineGroup) =>
+        lineGroup.segmentIds.every((id) => selectedModel.selectedLineIds.includes(id)),
+      )
+    : []
+  const selectedModelHiddenGroups = selectedModel
+    ? selectedModelLineGroups.filter((lineGroup) =>
+        lineGroup.segmentIds.every((id) => selectedModel.hiddenLineIds.includes(id)),
+      )
+    : []
 
   return (
     <div className="app-shell">
@@ -889,7 +1013,7 @@ function App() {
             <>
               <div className="field-grid two-up">
                 <label>
-                  <span>Face</span>
+                  <span>Orthographic view</span>
                   <select
                     value={selectedModel.orientation}
                     onChange={(event) =>
@@ -924,37 +1048,51 @@ function App() {
                 </label>
               </div>
 
-              <div className="field-grid">
-                <label>
-                  <span>Perspective distance (0 = orthographic)</span>
-                  <div className="slider-row">
-                    <input
-                      type="range"
-                      min="0"
-                      max="2000"
-                      step="10"
-                      value={selectedModel.perspectiveDistance}
-                      onChange={(event) =>
-                        handleModelSettingChange(selectedModel.id, {
-                          perspectiveDistance: Number(event.target.value),
-                        })
-                      }
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      step="10"
-                      value={selectedModel.perspectiveDistance}
-                      className="slider-number"
-                      onChange={(event) =>
-                        handleModelSettingChange(selectedModel.id, {
-                          perspectiveDistance: Number(event.target.value),
-                        })
-                      }
-                    />
-                  </div>
-                </label>
-              </div>
+              <details className="advanced-control">
+                <summary>Advanced projection</summary>
+                <p className="control-note">
+                  For exact laser-ready SVG output, keep perspective at 0 mm. Non-zero
+                  perspective is preview-only and will not match a drawing-grade orthographic
+                  export.
+                </p>
+                <div className="field-grid">
+                  <label>
+                    <span>Perspective distance in mm (0 = exact orthographic, +/- allowed)</span>
+                    <div className="slider-row">
+                      <input
+                        type="range"
+                        min="-2000"
+                        max="2000"
+                        step="5"
+                        value={selectedModel.perspectiveDistance}
+                        onChange={(event) =>
+                          handleModelSettingChange(selectedModel.id, {
+                            perspectiveDistance: Number(event.target.value),
+                          })
+                        }
+                      />
+                      <input
+                        type="number"
+                        step="1"
+                        value={selectedModel.perspectiveDistance}
+                        className="slider-number"
+                        onChange={(event) =>
+                          handleModelSettingChange(selectedModel.id, {
+                            perspectiveDistance: Number(event.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                  </label>
+                </div>
+              </details>
+
+              {selectedModel.perspectiveDistance !== 0 ? (
+                <p className="control-note warning">
+                  Perspective is active. Exported geometry will not be a true 1:1 orthographic
+                  drawing.
+                </p>
+              ) : null}
 
               <div className="field-grid two-up">
                 <label>
@@ -981,7 +1119,7 @@ function App() {
                 </label>
               </div>
 
-              <div className="field-grid two-up">
+              <div className="field-grid">
                 <label>
                   <span>Scale</span>
                   <input
@@ -994,16 +1132,6 @@ function App() {
                     }
                   />
                 </label>
-                <label className="toggle-pill">
-                  <input
-                    type="checkbox"
-                    checked={selectedModel.fillEnabled}
-                    onChange={(event) =>
-                      updateModel(selectedModel.id, { fillEnabled: event.target.checked })
-                    }
-                  />
-                  <span>Fill closed areas</span>
-                </label>
               </div>
 
               <div className="stat-grid">
@@ -1015,9 +1143,21 @@ function App() {
                   <span>Height</span>
                   <strong>{selectedModel.projection ? formatMillimeters(selectedModel.projection.height) : '-'}</strong>
                 </div>
+                <div>
+                  <span>Filled areas</span>
+                  <strong>{selectedModel.filledPolygonIds.length}</strong>
+                </div>
               </div>
 
               <div className="button-row compact">
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => updateModel(selectedModel.id, { filledPolygonIds: [] })}
+                  disabled={!selectedModel.filledPolygonIds.length}
+                >
+                  Clear fills
+                </button>
                 <button
                   type="button"
                   className="danger"
@@ -1031,11 +1171,11 @@ function App() {
 
           <div className="stat-grid">
             <div>
-              <span>Visible lines</span>
+              <span>Visible paths</span>
               <strong>{totalVisibleLines}</strong>
             </div>
             <div>
-              <span>Hidden lines</span>
+              <span>Hidden paths</span>
               <strong>{totalHiddenLines}</strong>
             </div>
           </div>
@@ -1048,7 +1188,9 @@ function App() {
               type="button"
               className="secondary"
               onClick={() =>
-                setModels((current) => current.map((m) => ({ ...m, hiddenLineIds: [] })))
+                setModels((current) =>
+                  current.map((m) => ({ ...m, hiddenLineIds: [], selectedLineIds: [] })),
+                )
               }
               disabled={!totalHiddenLines}
             >
@@ -1061,14 +1203,14 @@ function App() {
           <div className="panel-block">
             <div className="section-head">
               <h2>Line Control</h2>
-              <span className="badge subtle">Shift-click to multi-select</span>
+              <span className="badge subtle">Shift-click to multi-select paths</span>
             </div>
 
             <div className="button-row compact">
               <button
                 type="button"
                 onClick={() => handleHideSelectedLines(selectedModel.id)}
-                disabled={!selectedModel.selectedLineIds.length}
+                disabled={!selectedModelSelectedGroups.length}
               >
                 Hide selected
               </button>
@@ -1083,46 +1225,46 @@ function App() {
             </div>
 
             <div className="mini-list">
-              <div className="mini-list-head">Selected lines</div>
-              {selectedModelSelectedSegments.length ? (
-                selectedModelSelectedSegments.map((segment) => (
+              <div className="mini-list-head">Selected paths</div>
+              {selectedModelSelectedGroups.length ? (
+                selectedModelSelectedGroups.map((lineGroup) => (
                   <button
-                    key={segment.id}
+                    key={lineGroup.id}
                     type="button"
                     className="line-chip active"
                     onClick={() =>
                       updateModel(selectedModel.id, {
                         selectedLineIds: selectedModel.selectedLineIds.filter(
-                          (id) => id !== segment.id,
+                          (id) => !lineGroup.segmentIds.includes(id),
                         ),
                       })
                     }
                   >
-                    <span>{segment.id}</span>
-                    <small>{formatMillimeters(segment.length)}</small>
+                    <span>{lineGroup.label}</span>
+                    <small>{formatMillimeters(lineGroup.length)}</small>
                   </button>
                 ))
               ) : (
-                <p className="empty-copy">Click any preview line to select it.</p>
+                <p className="empty-copy">Click any preview line to select its full continuous path.</p>
               )}
             </div>
 
             <div className="mini-list">
-              <div className="mini-list-head">Hidden lines</div>
-              {selectedModelHiddenSegments.length ? (
-                selectedModelHiddenSegments.map((segment) => (
+              <div className="mini-list-head">Hidden paths</div>
+              {selectedModelHiddenGroups.length ? (
+                selectedModelHiddenGroups.map((lineGroup) => (
                   <button
-                    key={segment.id}
+                    key={lineGroup.id}
                     type="button"
                     className="line-chip hidden"
-                    onClick={() => handleUnhideLine(selectedModel.id, segment.id)}
+                    onClick={() => handleUnhideLine(selectedModel.id, lineGroup.segmentIds)}
                   >
-                    <span>{segment.id}</span>
+                    <span>{lineGroup.label}</span>
                     <small>Restore</small>
                   </button>
                 ))
               ) : (
-                <p className="empty-copy">Hidden lines stay out of the export.</p>
+                <p className="empty-copy">Hidden paths stay out of the export.</p>
               )}
             </div>
           </div>
@@ -1140,8 +1282,14 @@ function App() {
               type="button"
               className={measureMode ? 'accent' : 'secondary'}
               onClick={() => {
-                setMeasureMode((currentMode) => !currentMode)
+                const nextMeasureMode = !measureMode
+                setMeasureMode(nextMeasureMode)
+                setFillMode(false)
                 setMeasurementDraft(null)
+                setHoverSnap(null)
+                if (nextMeasureMode) {
+                  setStatus('Measure tool active. Click model lines, image edges, or image centers.')
+                }
               }}
               disabled={!models.length}
             >
@@ -1149,10 +1297,30 @@ function App() {
             </button>
             <button
               type="button"
+              className={fillMode ? 'accent' : 'secondary'}
+              onClick={() => {
+                const nextFillMode = !fillMode
+                setFillMode(nextFillMode)
+                setMeasureMode(false)
+                setMeasurementDraft(null)
+                setHoverSnap(null)
+                setStatus(
+                  nextFillMode
+                    ? 'Fill tool active. Click any closed area to toggle fill.'
+                    : 'Fill tool off.',
+                )
+              }}
+              disabled={!models.some((model) => model.projection?.closed_polygons.length)}
+            >
+              {fillMode ? 'Stop Fill' : 'Fill Tool'}
+            </button>
+            <button
+              type="button"
               className="secondary"
               onClick={() => {
                 setMeasurements([])
                 setMeasurementDraft(null)
+                setHoverSnap(null)
               }}
               disabled={!measurements.length && !measurementDraft}
             >
@@ -1165,9 +1333,11 @@ function App() {
           {models.length ? (
             <svg
               ref={svgRef}
-              className={measureMode ? 'preview-canvas measure-mode' : 'preview-canvas'}
+              className={`preview-canvas${measureMode ? ' measure-mode' : ''}${fillMode ? ' fill-mode' : ''}`}
               viewBox={`0 0 ${canvasBounds.width} ${canvasBounds.height}`}
               onPointerDown={handleCanvasPointerDown}
+              onPointerMove={handleCanvasPointerMove}
+              onPointerLeave={() => setHoverSnap(null)}
             >
               <defs>
                 <pattern id="minorGrid" width="1" height="1" patternUnits="userSpaceOnUse">
@@ -1184,22 +1354,23 @@ function App() {
               {deferredModels.map((model) => {
                 if (!model.projection) return null
                 const hiddenSet = new Set(model.hiddenLineIds)
+                const filledSet = new Set(model.filledPolygonIds)
                 const isSelected = selectedModelId === model.id
 
                 return (
                   <g
                     key={model.id}
                     transform={`translate(${model.x} ${model.y}) scale(${model.scale})`}
-                    onPointerDown={(event) =>
-                      beginDrag('model', model.id, model.x, model.y, event)
-                    }
                     className={isSelected ? 'model-group selected' : 'model-group'}
                   >
-                    {model.fillEnabled && model.projection.closed_polygons.map((polygon) => (
+                    {model.projection.closed_polygons.map((polygon) => (
                       <path
                         key={polygon.id}
                         d={polygonToPathData(polygon.points)}
-                        className="filled-polygon"
+                        className={filledSet.has(polygon.id) ? 'fill-region filled' : 'fill-region'}
+                        onPointerDown={(event) =>
+                          handlePolygonPointerDown(event, model.id, polygon.id)
+                        }
                       />
                     ))}
                     {model.projection.segments.map((segment) => {
@@ -1237,6 +1408,22 @@ function App() {
                           width={model.projection.width}
                           height={model.projection.height}
                           className="model-selection-box"
+                          onPointerDown={(event) => {
+                            event.stopPropagation()
+                            setSelectedModelId(model.id)
+                            setSelectedTextId(null)
+                            setSelectedImageId(null)
+                          }}
+                        />
+                        <rect
+                          x={model.projection.width / 2 - 2}
+                          y={model.projection.height / 2 - 2}
+                          width={4}
+                          height={4}
+                          className="drag-handle"
+                          onPointerDown={(event) =>
+                            beginDrag('model', model.id, model.x, model.y, event)
+                          }
                         />
                         <rect
                           x={model.projection.width - 1.5}
@@ -1261,9 +1448,6 @@ function App() {
                       <g
                         key={annotation.id}
                         transform={`translate(${annotation.x} ${annotation.y}) rotate(${annotation.rotation})`}
-                        onPointerDown={(event) =>
-                          beginDrag('image', annotation.id, annotation.x, annotation.y, event)
-                        }
                       >
                         <image
                           href={annotation.dataUrl}
@@ -1273,6 +1457,7 @@ function App() {
                           height={annotation.height}
                           opacity={annotation.opacity}
                           preserveAspectRatio="none"
+                          pointerEvents="none"
                         />
                         <rect
                           x={0}
@@ -1280,16 +1465,34 @@ function App() {
                           width={annotation.width}
                           height={annotation.height}
                           className={selected ? 'annotation-box selected' : 'annotation-box'}
+                          onPointerDown={(event) => {
+                            event.stopPropagation()
+                            setSelectedImageId(annotation.id)
+                            setSelectedTextId(null)
+                            setSelectedModelId(null)
+                          }}
                         />
                         {selected && (
-                          <rect
-                            x={annotation.width - 1.5}
-                            y={annotation.height - 1.5}
-                            width={3}
-                            height={3}
-                            className="resize-handle"
-                            onPointerDown={(event) => beginResize('image', annotation.id, event)}
-                          />
+                          <>
+                            <rect
+                              x={annotation.width / 2 - 2}
+                              y={annotation.height / 2 - 2}
+                              width={4}
+                              height={4}
+                              className="drag-handle"
+                              onPointerDown={(event) =>
+                                beginDrag('image', annotation.id, annotation.x, annotation.y, event)
+                              }
+                            />
+                            <rect
+                              x={annotation.width - 1.5}
+                              y={annotation.height - 1.5}
+                              width={3}
+                              height={3}
+                              className="resize-handle"
+                              onPointerDown={(event) => beginResize('image', annotation.id, event)}
+                            />
+                          </>
                         )}
                       </g>
                     )
@@ -1305,27 +1508,42 @@ function App() {
                       <g
                         key={annotation.id}
                         transform={`translate(${annotation.x} ${annotation.y}) rotate(${annotation.rotation})`}
-                        onPointerDown={(event) =>
-                          beginDrag('text', annotation.id, annotation.x, annotation.y, event)
-                        }
                       >
-                        <path d={annotation.pathData} className="text-outline" />
+                        <path d={annotation.pathData} className="text-outline" pointerEvents="none" />
                         <rect
                           x={0}
                           y={0}
                           width={Math.max(annotation.width, 0.5)}
                           height={Math.max(annotation.height, 0.5)}
                           className={selected ? 'annotation-box selected' : 'annotation-box'}
+                          onPointerDown={(event) => {
+                            event.stopPropagation()
+                            setSelectedTextId(annotation.id)
+                            setSelectedImageId(null)
+                            setSelectedModelId(null)
+                          }}
                         />
                         {selected && (
-                          <rect
-                            x={Math.max(annotation.width, 0.5) - 1.5}
-                            y={Math.max(annotation.height, 0.5) - 1.5}
-                            width={3}
-                            height={3}
-                            className="resize-handle"
-                            onPointerDown={(event) => beginResize('text', annotation.id, event)}
-                          />
+                          <>
+                            <rect
+                              x={Math.max(annotation.width, 0.5) / 2 - 2}
+                              y={Math.max(annotation.height, 0.5) / 2 - 2}
+                              width={4}
+                              height={4}
+                              className="drag-handle"
+                              onPointerDown={(event) =>
+                                beginDrag('text', annotation.id, annotation.x, annotation.y, event)
+                              }
+                            />
+                            <rect
+                              x={Math.max(annotation.width, 0.5) - 1.5}
+                              y={Math.max(annotation.height, 0.5) - 1.5}
+                              width={3}
+                              height={3}
+                              className="resize-handle"
+                              onPointerDown={(event) => beginResize('text', annotation.id, event)}
+                            />
+                          </>
                         )}
                       </g>
                     )
@@ -1333,6 +1551,27 @@ function App() {
               </g>
 
               <g className="measurement-layer">
+                {hoverSnap?.guide.kind === 'segment' ? (
+                  <line
+                    x1={hoverSnap.guide.start.x}
+                    y1={hoverSnap.guide.start.y}
+                    x2={hoverSnap.guide.end.x}
+                    y2={hoverSnap.guide.end.y}
+                    className="snap-guide-line"
+                  />
+                ) : null}
+                {hoverSnap ? (
+                  <circle cx={hoverSnap.point.x} cy={hoverSnap.point.y} r={0.55} className="snap-guide-point" />
+                ) : null}
+                {measurementDraft && hoverSnap ? (
+                  <line
+                    x1={measurementDraft.x}
+                    y1={measurementDraft.y}
+                    x2={hoverSnap.point.x}
+                    y2={hoverSnap.point.y}
+                    className="measure-preview-line"
+                  />
+                ) : null}
                 {measurementDraft ? (
                   <circle cx={measurementDraft.x} cy={measurementDraft.y} r={0.4} className="measure-point" />
                 ) : null}

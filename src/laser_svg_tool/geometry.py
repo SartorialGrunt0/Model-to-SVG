@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import acos, degrees
 from pathlib import Path
 from typing import Iterable
 
@@ -10,6 +11,7 @@ import trimesh
 
 
 EPSILON = 1e-6
+FEATURE_EDGE_ANGLE_DEGREES = 35.0
 
 
 @dataclass(frozen=True)
@@ -188,9 +190,14 @@ def _rotation_matrix_y(angle_radians: float) -> np.ndarray:
 
 
 def _apply_perspective(x: float, y: float, z: float, distance: float) -> tuple[float, float]:
-    if distance <= 0.0:
+    if abs(distance) <= EPSILON:
         return (x, y)
-    scale = distance / (distance + z)
+
+    denominator = distance + z
+    if abs(denominator) <= EPSILON:
+        denominator = EPSILON if denominator >= 0.0 else -EPSILON
+
+    scale = distance / denominator
     return (x * scale, y * scale)
 
 
@@ -263,7 +270,21 @@ def _edge_is_visible(face_indices: Iterable[int], normals: np.ndarray) -> bool:
     classes = {_normal_class(normals[index][2]) for index in indices}
     if len(indices) == 1:
         return -1 not in classes
-    return len(classes) > 1 and any(face_class in classes for face_class in (-1, 1))
+
+    if len(indices) != 2:
+        return False
+
+    if 1 in classes and -1 in classes:
+        return True
+
+    return _edge_feature_angle_degrees(normals[indices[0]], normals[indices[1]]) >= FEATURE_EDGE_ANGLE_DEGREES and any(
+        face_class in classes for face_class in (0, 1)
+    )
+
+
+def _edge_feature_angle_degrees(first_normal: np.ndarray, second_normal: np.ndarray) -> float:
+    cosine = float(np.clip(np.dot(first_normal, second_normal), -1.0, 1.0))
+    return degrees(acos(cosine))
 
 
 def _normal_class(normal_z: float) -> int:

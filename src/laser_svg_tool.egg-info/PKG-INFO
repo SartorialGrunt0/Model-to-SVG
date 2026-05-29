@@ -4,6 +4,7 @@ Version: 0.1.0
 Summary: Desktop STL/STEP to SVG trace tool for laser engraving alignment
 Requires-Python: >=3.14
 Description-Content-Type: text/markdown
+License-File: LICENSE
 Requires-Dist: fastapi>=0.116
 Requires-Dist: PySide6>=6.11
 Requires-Dist: gmsh>=4.15
@@ -13,6 +14,7 @@ Requires-Dist: shapely>=2.1
 Requires-Dist: svgwrite>=1.4
 Requires-Dist: trimesh>=4.12
 Requires-Dist: uvicorn>=0.35
+Dynamic: license-file
 
 # Laser SVG Tool
 
@@ -95,5 +97,7 @@ If the workspace already contains an STL or STEP file, the app loads the first o
 ## Notes
 
 - STL files do not contain units, so the app assumes millimeters.
-- STEP files are meshed through Gmsh before projection.
+- STL files also do not contain drawing edges, so SVG output is inferred from silhouettes and sharp feature transitions in the triangle mesh.
+- STEP files are currently meshed through Gmsh before projection, so they are still treated as projected surface geometry rather than direct CAD drawing edges.
+- Keep perspective distance at `0 mm` for true 1:1 laser-ready SVG output.
 - Exported SVGs contain black outlines only and no background fill.

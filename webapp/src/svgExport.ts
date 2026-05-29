@@ -46,9 +46,11 @@ export function buildExportSvg(
     .map((model) => {
       const hidden = new Set(model.hiddenLineIds)
       const proj = model.projection!
+      const filled = new Set(model.filledPolygonIds)
 
-      const fillMarkup = model.fillEnabled
+      const fillMarkup = filled.size
         ? proj.closed_polygons
+            .filter((polygon) => filled.has(polygon.id))
             .map(
               (polygon) =>
                 `<path d="${polygonToPathData(polygon.points)}" fill="black" stroke="none" />`,

@@ -79,5 +79,7 @@ If the workspace already contains an STL or STEP file, the app loads the first o
 ## Notes
 
 - STL files do not contain units, so the app assumes millimeters.
-- STEP files are meshed through Gmsh before projection.
+- STL files also do not contain drawing edges, so SVG output is inferred from silhouettes and sharp feature transitions in the triangle mesh.
+- STEP files are currently meshed through Gmsh before projection, so they are still treated as projected surface geometry rather than direct CAD drawing edges.
+- Keep perspective distance at `0 mm` for true 1:1 laser-ready SVG output.
 - Exported SVGs contain black outlines only and no background fill.

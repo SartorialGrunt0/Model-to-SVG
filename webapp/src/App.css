@@ -168,6 +168,38 @@
   min-height: 60px;
 }
 
+.advanced-control {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.advanced-control summary {
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.advanced-control[open] summary {
+  margin-bottom: 4px;
+}
+
+.control-note {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.control-note.warning {
+  color: var(--warning);
+}
+
 /* Buttons */
 .button-row {
   display: flex;
@@ -387,6 +419,10 @@ button.danger:hover:not(:disabled) {
   cursor: crosshair;
 }
 
+.preview-canvas.fill-mode {
+  cursor: cell;
+}
+
 /* Grid & SVG elements — light background */
 .grid-minor {
   stroke: rgba(0, 0, 0, 0.06);
@@ -420,13 +456,30 @@ button.danger:hover:not(:disabled) {
   stroke-dasharray: 0.8 0.6;
 }
 
-.filled-polygon {
-  fill: black;
+.fill-region {
+  fill: transparent;
   stroke: none;
+  pointer-events: none;
 }
 
-.model-group {
-  cursor: grab;
+.fill-region.filled {
+  fill: rgba(17, 24, 39, 0.84);
+}
+
+.preview-canvas.fill-mode .fill-region {
+  fill: rgba(142, 162, 255, 0.08);
+  stroke: rgba(142, 162, 255, 0.28);
+  stroke-width: 0.14;
+  pointer-events: all;
+}
+
+.preview-canvas.fill-mode .fill-region:hover {
+  fill: rgba(142, 162, 255, 0.18);
+}
+
+.preview-canvas.fill-mode .fill-region.filled {
+  fill: rgba(17, 24, 39, 0.72);
+  stroke: var(--accent);
 }
 
 .model-group.selected > .model-selection-box {
@@ -449,12 +502,25 @@ button.danger:hover:not(:disabled) {
   vector-effect: non-scaling-stroke;
 }
 
+.drag-handle {
+  fill: rgba(142, 162, 255, 0.92);
+  stroke: rgba(255, 255, 255, 0.95);
+  stroke-width: 0.16;
+  cursor: move;
+  vector-effect: non-scaling-stroke;
+}
+
+.drag-handle:hover {
+  fill: var(--accent-hover);
+}
+
 .annotation-box {
   fill: transparent;
   stroke: rgba(0, 0, 0, 0.12);
   stroke-width: 0.14;
   stroke-dasharray: 0.8 0.6;
   vector-effect: non-scaling-stroke;
+  cursor: pointer;
 }
 
 .annotation-box.selected {
@@ -476,6 +542,13 @@ button.danger:hover:not(:disabled) {
   vector-effect: non-scaling-stroke;
 }
 
+.measure-preview-line {
+  stroke: rgba(142, 162, 255, 0.7);
+  stroke-width: 0.16;
+  stroke-dasharray: 0.7 0.5;
+  vector-effect: non-scaling-stroke;
+}
+
 .measure-label {
   fill: var(--accent);
   font-size: 1.1px;
@@ -487,6 +560,20 @@ button.danger:hover:not(:disabled) {
 
 .measure-point {
   fill: var(--accent);
+}
+
+.snap-guide-line {
+  stroke: rgba(142, 162, 255, 0.5);
+  stroke-width: 0.14;
+  stroke-dasharray: 0.5 0.35;
+  vector-effect: non-scaling-stroke;
+}
+
+.snap-guide-point {
+  fill: rgba(142, 162, 255, 0.95);
+  stroke: rgba(255, 255, 255, 0.94);
+  stroke-width: 0.14;
+  vector-effect: non-scaling-stroke;
 }
 
 .slider-row {
